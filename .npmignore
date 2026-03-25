@@ -1,0 +1,7 @@
+src/
+tsconfig.json
+CLAUDE.md
+.env.example
+.gitignore
+src.zip
+*.map

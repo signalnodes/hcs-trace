@@ -1,7 +1,7 @@
 {
   "name": "hcs-trace",
   "version": "0.1.0",
-  "description": "Terminal-first HCS topic inspector with HOL standards decoding",
+  "description": "CLI tool to query, tail, decode, export, and analyze HCS topic streams with automatic standards detection",
   "type": "module",
   "bin": {
     "hcs-trace": "./dist/index.js"
@@ -14,7 +14,6 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@hashgraphonline/standards-sdk": "^0.1.169",
     "chalk": "^5.4.1",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
@@ -27,6 +26,14 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/signalnodes/hcs-trace.git"
+  },
+  "homepage": "https://github.com/signalnodes/hcs-trace#readme",
+  "bugs": {
+    "url": "https://github.com/signalnodes/hcs-trace/issues"
   },
   "keywords": ["hedera", "hcs", "consensus", "cli", "inspector", "debugger"],
   "license": "MIT"

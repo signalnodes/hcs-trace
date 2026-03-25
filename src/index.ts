@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name("hcs-trace")
   .description(
-    "Terminal-first HCS topic inspector with HOL standards decoding.\n" +
+    "Terminal-first HCS topic inspector with standards-aware decoding.\n" +
     "Inspect HCS topics like a developer, not an archaeologist."
   )
   .version("0.1.0");
