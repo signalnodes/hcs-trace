@@ -2,6 +2,10 @@
 
 > Query, decode, and inspect HCS topic streams from the terminal.
 
+[![npm version](https://img.shields.io/npm/v/hcs-trace.svg)](https://www.npmjs.com/package/hcs-trace)
+[![node](https://img.shields.io/node/v/hcs-trace)](https://www.npmjs.com/package/hcs-trace)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 ```bash
 npx hcs-trace decode 0.0.10301350 --limit 3
 ```
@@ -252,6 +256,15 @@ hcs-trace tail 0.0.12345 --network previewnet
 - **Read-only** -- hcs-trace does not submit messages or sign transactions.
 - **Mirror Node dependent** -- availability and rate limits are determined by the Mirror Node API.
 - **Standards coverage** -- auto-detection covers HCS-1, HCS-2, HCS-10, and HCS-11. Other standards are decoded as generic JSON or binary.
+
+## Roadmap
+
+Planned but not yet committed:
+
+- WebSocket-based tail (real-time vs polling)
+- HCS-3 and HCS-5 standards detection
+- Topic memo and admin key metadata display
+- `--filter` flag for type/payer filtering within `query` and `export`
 
 ## License
 

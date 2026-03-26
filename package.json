@@ -35,6 +35,6 @@
   "bugs": {
     "url": "https://github.com/signalnodes/hcs-trace/issues"
   },
-  "keywords": ["hedera", "hcs", "consensus", "cli", "inspector", "debugger"],
+  "keywords": ["hedera", "hcs", "hashgraph", "consensus", "mirror-node", "cli", "inspector", "debugger", "decode", "developer-tools"],
   "license": "MIT"
 }
