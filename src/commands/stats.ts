@@ -5,7 +5,7 @@ import ora from "ora";
 import { normalizeTopic } from "../utils/topic-id.js";
 import { timestampToDate } from "../utils/time.js";
 import { fetchTopicInfo, fetchAllMessages } from "../mirror/client.js";
-import { detect } from "../decode/detector.js";
+import { decode } from "../decode/pipeline.js";
 
 export function statsCommand(): Command {
   return new Command("stats")
@@ -74,11 +74,16 @@ export function statsCommand(): Command {
       }
       const sortedPayers = [...payerCounts.entries()].sort((a, b) => b[1] - a[1]);
 
-      // Standard distribution
+      // Standard distribution + detection source + confidence
       const standardCounts = new Map<string, number>();
+      const sourceCounts = new Map<string, number>();
+      const confidenceCounts = new Map<string, number>();
+
       for (const m of messages) {
-        const result = detect(m.message);
+        const result = decode(m.message);
         standardCounts.set(result.label, (standardCounts.get(result.label) ?? 0) + 1);
+        sourceCounts.set(result.detectedBy, (sourceCounts.get(result.detectedBy) ?? 0) + 1);
+        confidenceCounts.set(result.confidence, (confidenceCounts.get(result.confidence) ?? 0) + 1);
       }
       const sortedStandards = [...standardCounts.entries()].sort((a, b) => b[1] - a[1]);
 
@@ -124,6 +129,28 @@ export function statsCommand(): Command {
       }
       console.log(chalk.bold("Message Types"));
       console.log(stdTable.toString());
+
+      const sourceTable = new Table({ head: ["Detection Source", "Count", "%"], style: { head: ["cyan"] } });
+      const sourceOrder = ['validated', 'heuristic', 'fallback'];
+      for (const source of sourceOrder) {
+        const count = sourceCounts.get(source) ?? 0;
+        if (count > 0) {
+          sourceTable.push([source, count.toLocaleString(), `${((count / messages.length) * 100).toFixed(1)}%`]);
+        }
+      }
+      console.log(chalk.bold("Detection Sources"));
+      console.log(sourceTable.toString());
+
+      const confTable = new Table({ head: ["Confidence", "Count", "%"], style: { head: ["cyan"] } });
+      const confOrder = ['high', 'medium', 'low'];
+      for (const conf of confOrder) {
+        const count = confidenceCounts.get(conf) ?? 0;
+        if (count > 0) {
+          confTable.push([conf, count.toLocaleString(), `${((count / messages.length) * 100).toFixed(1)}%`]);
+        }
+      }
+      console.log(chalk.bold("Confidence Distribution"));
+      console.log(confTable.toString());
 
       const chunkTable = new Table({ style: { head: ["cyan"] } });
       chunkTable.push(

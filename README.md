@@ -14,19 +14,16 @@ npx hcs-trace decode 0.0.10301350 --limit 3
 Topic: 0.0.10301350  (mainnet)
 
 ┌──────────────────────────────────────────────────────────────────────
-│ seq=1  2026-02-26 21:26:48 UTC  0.0.10301284
-│ JSON (tweet_attestation)
+│ seq=42  2026-03-15 12:34:56 UTC  0.0.10301284
+│ HCS-10 Agent Comms  validated · high
 ├──────────────────────────────────────────────────────────────────────
-│  type               tweet_attestation
-│  tweetId            12075651133
-│  authorId           61633009
-│  username           PeteHegseth
-│  postedAt           2010-04-13T00:42:54.000Z
-│  contentHash        4bce182fef0019f68f2b7789aa45854dd41a497b...
-│  topicId            0.0.10301350
-│  submittedAt        2026-02-26T21:26:46.444Z
+│  p                  hcs-10
+│  op                 register
+│  operator_id        0.0.555555@0.0.666666
 └──────────────────────────────────────────────────────────────────────
 ```
+
+Every decoded message now shows **what standard it is**, **how we know** (`validated`, `heuristic`, or `fallback`), and **how confident** the detection is (`high`, `medium`, or `low`).
 
 ## Install
 
@@ -44,13 +41,14 @@ Requires Node.js >= 20.
 
 ## What It Does
 
-- **`query`** -- Browse topic messages with pagination, automatic decoding, and optional raw/JSON output
-- **`tail`** -- Live-follow a topic with polling-based updates
-- **`decode`** -- Deep-inspect messages with auto-detection of HCS-1, HCS-2, HCS-10, and HCS-11 standards
-- **`export`** -- Bulk-export topic history to JSONL, JSON, or CSV for offline analysis
-- **`stats`** -- Compute topic analytics: message count, rate, payload sizes, top senders, standards breakdown
+- **`query`** — Browse topic messages with pagination, automatic decoding, filter support, and optional raw/JSON output
+- **`tail`** — Live-follow a topic with polling-based updates and provenance markers
+- **`decode`** — Deep-inspect messages with provenance/confidence display and optional `--explain` mode
+- **`export`** — Bulk-export topic history to JSONL, JSON, or CSV with filter support and versioned schema
+- **`stats`** — Compute topic analytics: message count, rate, payload sizes, top senders, standards breakdown, detection source distribution
+- **`topic`** — Inspect topic-level metadata (memo, keys, auto-renew, timestamps)
 
-All commands support mainnet, testnet, and previewnet via `--network`. Output is terminal-formatted by default, with JSON and raw modes for scripting.
+All commands support mainnet, testnet, and previewnet via `--network`.
 
 ## Quick Examples
 
@@ -58,17 +56,29 @@ All commands support mainnet, testnet, and previewnet via `--network`. Output is
 # Browse the last 20 messages on a topic
 hcs-trace query 0.0.10301350 --limit 20
 
+# Filter by standard
+hcs-trace query 0.0.10301350 --filter-standard HCS-10
+
+# Filter by payer
+hcs-trace query 0.0.10301350 --filter-payer 0.0.12345
+
 # Live-follow a topic (polls every 3s by default)
 hcs-trace tail 0.0.10301350
 
-# Deep-decode with field-level detail
+# Deep-decode with field-level detail and provenance
 hcs-trace decode 0.0.10301350 --limit 5
 
-# Export full topic history as JSONL
-hcs-trace export 0.0.10301350 --format jsonl > topic.jsonl
+# Decode with classification explanation
+hcs-trace decode 0.0.10301350 --explain
 
-# Export with decoded payloads included
-hcs-trace export 0.0.10301350 --format json --decode --output topic.json
+# Inspect topic metadata
+hcs-trace topic 0.0.10301350
+
+# Export full topic history as JSONL with decoded payloads
+hcs-trace export 0.0.10301350 --format jsonl --decode > topic.jsonl
+
+# Export only high-confidence HCS-10 messages
+hcs-trace export 0.0.10301350 --decode --filter-standard HCS-10 --filter-confidence high
 
 # Topic analytics (sample first 500 messages)
 hcs-trace stats 0.0.10301350 --sample 500
@@ -87,21 +97,17 @@ hcs-trace query <topicId> [options]
 | Option | Description | Default |
 |---|---|---|
 | `-l, --limit <n>` | Messages per page | 25 |
-| `-a, --all` | Fetch all pages without prompting | -- |
-| `--from <seqnum>` | Start from sequence number | -- |
-| `--raw` | Show raw base64, skip decode | -- |
-| `--json` | Output as JSON array | -- |
+| `-a, --all` | Fetch all pages without prompting | — |
+| `--from <seqnum>` | Start from sequence number | — |
+| `--raw` | Show raw base64, skip decode | — |
+| `--json` | Output as JSON array | — |
+| `--filter-standard <std>` | Filter by standard, e.g. `HCS-10` | — |
+| `--filter-payer <account>` | Filter by payer account ID | — |
+| `--filter-text <search>` | Filter by substring in decoded content | — |
+| `--filter-confidence <level>` | Filter by confidence: high, medium, low | — |
 | `--network <net>` | mainnet, testnet, or previewnet | mainnet |
 
-```
-┌────────┬────────────────────────┬──────────────────┬─────────────────────────────────────────────┐
-│ Seq    │ Timestamp (UTC)        │ Payer            │ Type / Summary                              │
-├────────┼────────────────────────┼──────────────────┼─────────────────────────────────────────────┤
-│ 1      │ 2026-02-26 21:26:48    │ 0.0.10301284     │ JSON (tweet_attestation)  username=PeteHeg… │
-├────────┼────────────────────────┼──────────────────┼─────────────────────────────────────────────┤
-│ 2      │ 2026-02-26 21:26:53    │ 0.0.10301284     │ JSON (tweet_attestation)  username=PeteHeg… │
-└────────┴────────────────────────┴──────────────────┴─────────────────────────────────────────────┘
-```
+The table adds a dim provenance marker (`·v` = validated, `·h` = heuristic, `·f` = fallback) to each type label.
 
 ### tail
 
@@ -115,19 +121,14 @@ hcs-trace tail <topicId> [options]
 |---|---|---|
 | `--interval <ms>` | Polling interval in milliseconds | 3000 |
 | `--since <seqnum>` | Start from sequence number | current tip |
-| `--raw` | Show raw base64, skip decode | -- |
+| `--raw` | Show raw base64, skip decode | — |
 | `--network <net>` | mainnet, testnet, or previewnet | mainnet |
 
-```
-Tailing 0.0.10301350 (mainnet)  Press Ctrl+C to stop
-
-01:09:07  seq=6490  0.0.10301284  JSON (tweet_attestation)  username=...
-01:09:12  seq=6491  0.0.10301284  JSON (tweet_attestation)  username=...
-```
+Each line includes a dim `[v]`/`[h]`/`[f]` marker indicating detection source.
 
 ### decode
 
-Fetch and fully decode messages with auto-detection of HCS standards and custom payloads.
+Fetch and fully decode messages with auto-detection of HCS standards.
 
 ```bash
 hcs-trace decode <topicId> [options]
@@ -136,12 +137,34 @@ hcs-trace decode <topicId> [options]
 | Option | Description | Default |
 |---|---|---|
 | `-l, --limit <n>` | Number of messages to decode | 10 |
-| `--seq <n>` | Decode a specific sequence number | -- |
-| `--from <seqnum>` | Start from sequence number | -- |
+| `--seq <n>` | Decode a specific sequence number | — |
+| `--from <seqnum>` | Start from sequence number | — |
 | `--format <fmt>` | table, json, or raw | table |
+| `--explain` | Show why each message was classified as it was | — |
 | `--network <net>` | mainnet, testnet, or previewnet | mainnet |
 
-Auto-detected standards: **HCS-1** (inscriptions), **HCS-2** (topic registries), **HCS-10** (agent communication), **HCS-11** (user profiles). Non-standard JSON payloads are parsed and displayed with extracted fields. Binary payloads are identified and labeled.
+With `--explain`:
+
+```
+│ HCS-10 Agent Comms  validated · high
+│ ℹ  Validated: parsed successfully against HCS-10 Zod schema
+```
+
+JSON format includes `detected_by`, `confidence`, `content_type`, `extracted_fields`, and `warnings`.
+
+### topic
+
+Inspect topic-level metadata from the mirror node.
+
+```bash
+hcs-trace topic <topicId> [options]
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `--network <net>` | mainnet, testnet, or previewnet | mainnet |
+
+Displays: topic ID, network, memo, admin key, submit key, auto-renew account and period, created timestamp, and active/deleted status.
 
 ### export
 
@@ -156,25 +179,46 @@ hcs-trace export <topicId> [options]
 | `--format <fmt>` | jsonl, json, or csv | jsonl |
 | `--output <file>` | Output file (omit for stdout) | stdout |
 | `--limit <n>` | Max messages to export | all |
-| `--from <seqnum>` | Start from sequence number | -- |
-| `--decode` | Include decoded payload in output | -- |
+| `--from <seqnum>` | Start from sequence number | — |
+| `--decode` | Include decoded payload in output | — |
 | `--delay <ms>` | Delay between page fetches | 50 |
+| `--filter-standard <std>` | Filter by standard | — |
+| `--filter-payer <account>` | Filter by payer account ID | — |
+| `--filter-text <search>` | Filter by substring in decoded content | — |
+| `--filter-confidence <level>` | Filter by confidence: high, medium, low | — |
 | `--network <net>` | mainnet, testnet, or previewnet | mainnet |
 
-```bash
-# Stream to file
-hcs-trace export 0.0.10301350 --format jsonl --output topic.jsonl
+**Note (breaking change from v0.1):** When `--decode` is used, the JSON/JSONL export shape has changed. Decoded fields are now nested under a `decode` key. All exports include a `schema_version` field.
 
-# Pipe to jq
-hcs-trace export 0.0.10301350 --format jsonl | jq '.payer_account_id'
+Example `--decode` record (JSONL/JSON):
 
-# CSV for spreadsheets
-hcs-trace export 0.0.10301350 --format csv --output topic.csv
+```json
+{
+  "schema_version": "0.2.0",
+  "sequence_number": 42,
+  "consensus_timestamp": "2026-03-15T12:34:56.000Z",
+  "payer_account_id": "0.0.12345",
+  "chunk_number": 1,
+  "chunk_total": 1,
+  "message_raw": "eyJ...",
+  "decode": {
+    "standard": "HCS-10",
+    "label": "HCS-10 Agent Comms",
+    "detected_by": "validated",
+    "confidence": "high",
+    "content_type": "json",
+    "summary": "op=register",
+    "extracted_fields": { "op": "register" },
+    "warnings": []
+  }
+}
 ```
+
+CSV with `--decode` adds flat columns: `standard`, `detected_by`, `confidence`, `summary`.
 
 ### stats
 
-Compute analytics for a topic: message count, rate, payload sizes, sender breakdown, and standards distribution.
+Compute analytics for a topic.
 
 ```bash
 hcs-trace stats <topicId> [options]
@@ -186,59 +230,52 @@ hcs-trace stats <topicId> [options]
 | `--delay <ms>` | Delay between page fetches | 50 |
 | `--network <net>` | mainnet, testnet, or previewnet | mainnet |
 
-```
-Messages
-┌────────────────┬─────────────────────────────────────┐
-│ Total messages │ 6,490                               │
-│ First message  │ 2026-02-26T21:26:48 UTC  (seq=1)    │
-│ Latest message │ 2026-03-25T01:09:07 UTC  (seq=6490) │
-│ Message rate   │ 248.1 msg/day  (26 days)            │
-└────────────────┴─────────────────────────────────────┘
+Includes: message count/rate, payload sizes, unique payers, standards distribution, **detection source distribution** (new), **confidence distribution** (new), and chunk breakdown.
 
-Unique Payers
-┌──────────────┬───────┬────────┐
-│ Account      │ Count │ %      │
-├──────────────┼───────┼────────┤
-│ 0.0.10301284 │ 6,490 │ 100.0% │
-└──────────────┴───────┴────────┘
+## Standards Detection
 
-Message Types
-┌──────────────────────────┬───────┬───────┐
-│ Standard / Type          │ Count │ %     │
-├──────────────────────────┼───────┼───────┤
-│ JSON (tweet_attestation) │ 6,303 │ 97.1% │
-│ JSON (deletion_detected) │ 187   │ 2.9%  │
-└──────────────────────────┴───────┴───────┘
-```
+hcs-trace detects and labels messages from the [Hashgraph Online](https://hashgraphonline.com) HCS standards.
 
-## Standards Decoding
+Every detection result includes three pieces of provenance:
 
-hcs-trace auto-detects and labels messages that follow [Hashgraph Online](https://hashgraphonline.com) HCS standards:
-
-| Standard | Description | Detected Fields |
+| Field | Values | Meaning |
 |---|---|---|
-| **HCS-1** | File inscriptions with chunking | operation, file reference, metadata |
-| **HCS-2** | Topic registries | operation, memo |
-| **HCS-10** | Agent-to-agent communication | operation, protocol fields |
-| **HCS-11** | User/agent profiles | display name, profile metadata |
+| `detectedBy` | `validated` | Passed a structural Zod schema — high certainty |
+| | `heuristic` | Matched field patterns (e.g. `p` field) — good certainty |
+| | `fallback` | Generic classification — low certainty |
+| `confidence` | `high` | Strong structural match, validated parse |
+| | `medium` | Likely match, field-pattern based |
+| | `low` | Generic fallback — treat with caution |
 
-Messages that don't match a known standard are still decoded: valid JSON is parsed and key fields are extracted, plain text is displayed directly, and binary payloads are identified.
+### Supported Standards
 
-Standards detection is built-in, based on known message shapes from the [Hashgraph Online standards](https://github.com/hashgraph-online) specifications.
+| Standard | Description | Detection |
+|---|---|---|
+| **HCS-1** | File inscriptions with chunking | `p=hcs-1` or `standard=hcs-1` |
+| **HCS-2** | Topic registries | `p=hcs-2` + `op` field |
+| **HCS-3** | Recursive file loading | `p=hcs-3` |
+| **HCS-5** | Hashinal NFT registry | `p=hcs-5` + `op` field |
+| **HCS-6** | Dynamic Hashinals | `p=hcs-6` |
+| **HCS-7** | Smart Hashinals | `p=hcs-7` |
+| **HCS-10** | Agent-to-agent communication | `p=hcs-10` + `op` field |
+| **HCS-11** | Profiles (personal, AI agent, MCP server, flora) | `version` + `type` (0–3) + `display_name` |
+| **HCS-20** | Auditable points | `p=hcs-20` + `op` + `tick` |
+| **HCS-27** | Transparency logs | `p=hcs-27` + `op=register` |
+
+Messages that don't match any standard are still decoded: valid JSON is parsed and key fields are extracted (`CUSTOM_JSON`, confidence `low`), plain text is displayed directly (`UNKNOWN`, confidence `low`), and binary payloads are identified (`BINARY`, confidence `low`).
 
 ## Why This Exists
 
 If you work with HCS topics, you've done the loop: hit the Mirror Node API, paginate through results, base64-decode payloads, eyeball JSON keys to guess the standard. It works, but it's slow and repetitive.
 
-hcs-trace handles pagination, decoding, and standards detection in one step so you can focus on what the messages actually say. It's a debugging and inspection tool -- not a submission client, not an SDK replacement.
+hcs-trace handles pagination, decoding, and standards detection in one step so you can focus on what the messages actually say. It tells you **what a message is, how it knows, and how confident it is**.
+
+It's a debugging and inspection tool — not a submission client, not an SDK replacement.
 
 ## How It Fits with Existing Tools
 
-hcs-trace is a read-only inspection layer. It doesn't submit messages, manage keys, or replace any SDK.
-
 - **Hedera SDKs** handle transaction submission and signing. hcs-trace reads what's already on the network.
 - **Mirror Node REST API** is the data source. hcs-trace adds pagination, decoding, formatting, and export on top.
-- **HCS standards** (HCS-1, HCS-2, HCS-10, HCS-11) are detected by built-in pattern matching against known message shapes.
 - **HashScan / explorers** show transactions in a browser. hcs-trace brings that inspection into the terminal with scriptable output.
 
 ## Network Support
@@ -252,19 +289,21 @@ hcs-trace tail 0.0.12345 --network previewnet
 
 ## Limitations
 
-- **Polling-based tail** -- `tail` polls the Mirror Node REST API at a configurable interval. It is not a WebSocket stream.
-- **Read-only** -- hcs-trace does not submit messages or sign transactions.
-- **Mirror Node dependent** -- availability and rate limits are determined by the Mirror Node API.
-- **Standards coverage** -- auto-detection covers HCS-1, HCS-2, HCS-10, and HCS-11. Other standards are decoded as generic JSON or binary.
+- **Polling-based tail** — `tail` polls the Mirror Node REST API. It is not a WebSocket stream.
+- **Read-only** — hcs-trace does not submit messages or sign transactions.
+- **Mirror Node dependent** — availability and rate limits are determined by the Mirror Node API.
+- **Client-side filtering** — `--filter-*` options fetch pages and filter locally, not server-side.
+
+## Breaking Changes in v0.2
+
+- **`export --decode` output shape changed**: decoded fields are now nested under a `decode` key instead of flat `standard`/`decoded` fields. All exports include `schema_version: "0.2.0"`.
+- If you parse `--decode` export output, update your consumers to read from `decode.standard`, `decode.detected_by`, etc.
 
 ## Roadmap
 
-Planned but not yet committed:
-
-- WebSocket-based tail (real-time vs polling)
-- HCS-3 and HCS-5 standards detection
-- Topic memo and admin key metadata display
-- `--filter` flag for type/payer filtering within `query` and `export`
+- v0.3: rate limiting / retry logic, timestamp range filters (`--since` / `--until`), WebSocket-based tail
+- v0.3: sample topics and golden test corpus from live mainnet data
+- v0.3: selected new standards as they mature
 
 ## License
 

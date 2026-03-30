@@ -5,8 +5,15 @@ import ora from "ora";
 import { normalizeTopic } from "../utils/topic-id.js";
 import { formatTimestamp } from "../utils/time.js";
 import { fetchTopicInfo, fetchPage } from "../mirror/client.js";
-import { detect } from "../decode/detector.js";
+import { decode } from "../decode/pipeline.js";
+import { parseFilterOptions, matchesFilters, hasFilters } from "../utils/filters.js";
 import type { MirrorMessage } from "../mirror/types.js";
+
+const SOURCE_MARKER: Record<string, string> = {
+  validated: '·v',
+  heuristic: '·h',
+  fallback:  '·f',
+};
 
 export function queryCommand(): Command {
   return new Command("query")
@@ -17,11 +24,16 @@ export function queryCommand(): Command {
     .option("--from <seqnum>", "start from sequence number")
     .option("--raw", "show raw base64, skip decode")
     .option("--json", "output raw JSON")
+    .option("--filter-standard <std>", "filter by standard (e.g. HCS-10)")
+    .option("--filter-payer <account>", "filter by payer account ID")
+    .option("--filter-text <search>", "filter by substring in decoded content")
+    .option("--filter-confidence <level>", "filter by confidence: high | medium | low")
     .option("--network <net>", "mainnet | testnet | previewnet", "mainnet")
     .action(async (topicIdArg: string, opts) => {
       const topicId = normalizeTopic(topicIdArg);
       const network: string = opts.network;
       const limit = parseInt(opts.limit, 10);
+      const filters = parseFilterOptions(opts);
 
       const spinner = ora(`Fetching topic ${topicId}...`).start();
 
@@ -35,7 +47,6 @@ export function queryCommand(): Command {
       }
 
       if (opts.json) {
-        // JSON mode — just dump everything
         const all: MirrorMessage[] = [];
         let cursor: string | null = null;
         let first = true;
@@ -59,6 +70,10 @@ export function queryCommand(): Command {
       console.log();
       console.log(chalk.bold(`Topic: ${topicId}`) + chalk.dim(`  (${network})`));
       if (info.memo) console.log(chalk.dim(`Memo:  ${info.memo}`));
+      if (hasFilters(filters)) {
+        const active = Object.entries(filters).map(([k, v]) => `${k}=${v}`).join('  ');
+        console.log(chalk.dim(`Filters: ${active}`));
+      }
       console.log();
 
       let cursor: string | null = null;
@@ -75,12 +90,22 @@ export function queryCommand(): Command {
         first = false;
 
         if (page.messages.length === 0) {
-          console.log(chalk.dim("  No messages found."));
+          if (totalShown === 0) console.log(chalk.dim("  No messages found."));
           break;
         }
 
-        renderTable(page.messages, opts.raw);
-        totalShown += page.messages.length;
+        const visible = opts.raw
+          ? page.messages
+          : page.messages.filter((msg) => {
+              if (!hasFilters(filters)) return true;
+              const result = decode(msg.message);
+              return matchesFilters(result, msg.payer_account_id, filters);
+            });
+
+        if (visible.length > 0) {
+          renderTable(visible, opts.raw);
+          totalShown += visible.length;
+        }
 
         if (!page.nextCursor || page.messages.length < limit) break;
         cursor = page.nextCursor;
@@ -99,7 +124,7 @@ function renderTable(messages: MirrorMessage[], raw: boolean): void {
   const table = new Table({
     head: ["Seq", "Timestamp (UTC)", "Payer", "Type / Summary"],
     style: { head: ["cyan"] },
-    colWidths: [8, 24, 18, 45],
+    colWidths: [8, 24, 18, 48],
   });
 
   for (const msg of messages) {
@@ -109,8 +134,9 @@ function renderTable(messages: MirrorMessage[], raw: boolean): void {
     if (raw) {
       table.push([msg.sequence_number, ts, payer, chalk.dim(msg.message.slice(0, 40) + "…")]);
     } else {
-      const result = detect(msg.message);
-      const typeLabel = chalk.cyan(result.label);
+      const result = decode(msg.message);
+      const marker = chalk.dim(SOURCE_MARKER[result.detectedBy] ?? '');
+      const typeLabel = chalk.cyan(result.label) + marker;
       const summary = chalk.dim(result.summary.slice(0, 42));
       table.push([msg.sequence_number, ts, payer, `${typeLabel}  ${summary}`]);
     }
@@ -133,7 +159,6 @@ async function promptContinue(shown: number): Promise<boolean> {
         resolve(key !== "q" && key !== "Q");
       });
     } else {
-      // Non-TTY fallback (piped input etc.) — just continue
       process.stdout.write("\n");
       resolve(true);
     }

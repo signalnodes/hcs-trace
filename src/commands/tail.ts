@@ -4,7 +4,13 @@ import ora from "ora";
 import { normalizeTopic } from "../utils/topic-id.js";
 import { formatTimestamp } from "../utils/time.js";
 import { fetchTopicInfo, fetchPage, fetchTip, sleep } from "../mirror/client.js";
-import { detect } from "../decode/detector.js";
+import { decode } from "../decode/pipeline.js";
+
+const SOURCE_MARKER: Record<string, string> = {
+  validated: '[v]',
+  heuristic: '[h]',
+  fallback:  '[f]',
+};
 
 export function tailCommand(): Command {
   return new Command("tail")
@@ -59,10 +65,11 @@ export function tailCommand(): Command {
           if (opts.raw) {
             console.log(`[${ts}] ${seq}  ${payer}  ${chalk.dim(msg.message.slice(0, 48) + "…")}`);
           } else {
-            const result = detect(msg.message);
+            const result = decode(msg.message);
             const label = colorLabel(result.label);
             const summary = chalk.dim(result.summary.slice(0, 48));
-            console.log(`[${ts}] ${seq}  ${payer}  ${label}  ${summary}`);
+            const marker = chalk.dim(SOURCE_MARKER[result.detectedBy] ?? '');
+            console.log(`[${ts}] ${seq}  ${payer}  ${label}  ${summary}  ${marker}`);
           }
         }
 
@@ -72,8 +79,9 @@ export function tailCommand(): Command {
 }
 
 function colorLabel(label: string): string {
-  if (label.includes("deletion") || label.includes("DELETION")) return chalk.red(label);
-  if (label.includes("attestation") || label.includes("HCS-11")) return chalk.green(label);
+  if (label.includes("HCS-11")) return chalk.green(label);
   if (label.includes("HCS-10") || label.includes("HCS-2")) return chalk.cyan(label);
+  if (label.includes("HCS-20") || label.includes("HCS-27")) return chalk.magenta(label);
+  if (label.includes("Binary")) return chalk.red(label);
   return chalk.yellow(label);
 }

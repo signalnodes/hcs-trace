@@ -4,16 +4,29 @@ import ora from "ora";
 import { normalizeTopic } from "../utils/topic-id.js";
 import { formatTimestamp } from "../utils/time.js";
 import { fetchTopicInfo, fetchPage } from "../mirror/client.js";
-import { detect } from "../decode/detector.js";
+import { decode } from "../decode/pipeline.js";
+
+const SOURCE_LABEL: Record<string, string> = {
+  validated: 'validated',
+  heuristic: 'heuristic',
+  fallback: 'fallback',
+};
+
+const CONFIDENCE_COLOR: Record<string, (s: string) => string> = {
+  high: chalk.green,
+  medium: chalk.yellow,
+  low: chalk.dim,
+};
 
 export function decodeCommand(): Command {
   return new Command("decode")
-    .description("Fetch and fully decode HCS messages, auto-detecting HCS-1/2/10/11 standards")
+    .description("Fetch and fully decode HCS messages, auto-detecting standards")
     .argument("<topicId>", "HCS topic ID")
     .option("-l, --limit <n>", "number of messages to decode", "10")
     .option("--seq <n>", "decode a specific sequence number")
     .option("--from <seqnum>", "start from sequence number")
     .option("--format <fmt>", "table | json | raw", "table")
+    .option("--explain", "show why each message was classified as it was")
     .option("--network <net>", "mainnet | testnet | previewnet", "mainnet")
     .action(async (topicIdArg: string, opts) => {
       const topicId = normalizeTopic(topicIdArg);
@@ -52,12 +65,25 @@ export function decodeCommand(): Command {
       }
 
       if (opts.format === "json") {
-        const results = messages.map((msg) => ({
-          sequence_number: msg.sequence_number,
-          consensus_timestamp: msg.consensus_timestamp,
-          payer_account_id: msg.payer_account_id,
-          ...detect(msg.message),
-        }));
+        const results = messages.map((msg) => {
+          const result = decode(msg.message);
+          return {
+            sequence_number: msg.sequence_number,
+            consensus_timestamp: msg.consensus_timestamp,
+            payer_account_id: msg.payer_account_id,
+            standard: result.standard,
+            label: result.label,
+            content_type: result.contentType,
+            detected_by: result.detectedBy,
+            confidence: result.confidence,
+            summary: result.summary,
+            extracted_fields: result.extractedFields,
+            warnings: result.warnings,
+            raw: result.raw,
+            decoded: result.decoded,
+            parsed: result.parsed,
+          };
+        });
         console.log(JSON.stringify(results, null, 2));
         return;
       }
@@ -68,7 +94,7 @@ export function decodeCommand(): Command {
       console.log();
 
       for (const msg of messages) {
-        const result = detect(msg.message);
+        const result = decode(msg.message);
         const ts = formatTimestamp(msg.consensus_timestamp);
 
         if (opts.format === "raw") {
@@ -80,11 +106,28 @@ export function decodeCommand(): Command {
         const headerLine =
           chalk.bold(`seq=${msg.sequence_number}`) +
           chalk.dim(`  ${ts}  ${msg.payer_account_id}`);
-        const standardLine = chalk.cyan(result.label);
+
+        const colorConf = CONFIDENCE_COLOR[result.confidence] ?? chalk.dim;
+        const provenanceLine =
+          chalk.cyan(result.label) +
+          chalk.dim(`  ${SOURCE_LABEL[result.detectedBy]} · `) +
+          colorConf(result.confidence);
 
         console.log("┌" + "─".repeat(70));
         console.log("│ " + headerLine);
-        console.log("│ " + standardLine);
+        console.log("│ " + provenanceLine);
+
+        if (opts.explain) {
+          const explanation = getExplanation(result.detectedBy, result.standard);
+          console.log("│ " + chalk.dim(`ℹ  ${explanation}`));
+        }
+
+        if (result.warnings.length > 0) {
+          for (const w of result.warnings) {
+            console.log("│ " + chalk.yellow(`⚠  ${w}`));
+          }
+        }
+
         console.log("├" + "─".repeat(70));
 
         if (result.parsed && typeof result.parsed === "object") {
@@ -102,4 +145,21 @@ export function decodeCommand(): Command {
         console.log();
       }
     });
+}
+
+function getExplanation(detectedBy: string, standard: string): string {
+  switch (detectedBy) {
+    case 'validated':
+      return `Validated: parsed successfully against ${standard} Zod schema`;
+    case 'heuristic':
+      return `Heuristic: matched field pattern for ${standard}`;
+    case 'fallback':
+      return standard === 'BINARY'
+        ? 'Fallback: payload is not valid UTF-8 text'
+        : standard === 'UNKNOWN'
+        ? 'Fallback: plain text, no JSON detected'
+        : 'Fallback: valid JSON but no standard pattern matched';
+    default:
+      return `Detected by ${detectedBy}`;
+  }
 }
